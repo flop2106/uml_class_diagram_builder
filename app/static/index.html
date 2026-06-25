@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UML Builder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+  --accent:#7c6af7;--cta:#f97316;--cta-dim:#c05a0e;
+  --text:#e6edf3;--muted:#8b949e;--success:#3fb950;--error:#f85149;
+  --warn:#e3b341;--r:6px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:13px}
+
+/* TOP BAR */
+#topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0;height:46px}
+#logo{font-size:14px;font-weight:700;letter-spacing:-.3px;display:flex;align-items:center;gap:6px;margin-right:8px}
+#logo span{width:8px;height:8px;background:var(--accent);border-radius:50%;display:inline-block}
+.cfg-group{display:flex;align-items:center;gap:6px}
+.cfg-group label{font-size:11px;color:var(--muted);white-space:nowrap}
+input[type=text],input[type=password],select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:var(--r);font-family:inherit;outline:none;transition:border-color .15s}
+input[type=text],input[type=password],select{padding:5px 8px;font-size:12px}
+input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{border-color:var(--accent)}
+#token-input{width:200px;font-family:'SF Mono','Fira Code',monospace}
+#model-input{width:160px}
+select option{background:var(--surface2)}
+
+/* MAIN */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+#sidebar{width:290px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+
+/* MODE TABS */
+#mode-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.mode-btn{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);padding:9px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;transition:color .15s,border-color .15s}
+.mode-btn:hover{color:var(--text)}
+.mode-btn.active{color:var(--text);border-bottom-color:var(--accent)}
+
+/* PANELS */
+.mode-panel{display:none;flex-direction:column;flex:1;overflow:hidden}
+.mode-panel.active{display:flex}
+.sec-label{padding:8px 12px 6px;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border)}
+
+/* PROMPT MODE */
+#prompt-area{padding:10px;border-bottom:1px solid var(--border);flex-shrink:0}
+#prompt-input{width:100%;height:80px;resize:vertical;padding:8px;font-size:12px;line-height:1.5;border:1px solid var(--border);border-radius:var(--r)}
+#prompt-input::placeholder{color:var(--muted)}
+.hint{font-size:10px;color:var(--muted);margin:5px 0 8px}
+.gen-btn{width:100%;background:var(--cta);color:white;border:none;padding:8px;border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+.gen-btn:hover:not(:disabled){background:var(--cta-dim)}
+.gen-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* CODE MODE */
+#code-scroll{flex:1;overflow-y:auto;padding:10px}
+#code-scroll::-webkit-scrollbar{width:4px}
+#code-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.file-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:8px;margin-bottom:8px}
+.file-card-header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.file-card-header input[type=text]{flex:1;font-size:11px}
+.file-card select{font-size:11px;padding:3px 6px}
+.file-card-header button{background:none;border:none;color:var(--error);cursor:pointer;font-size:14px;line-height:1;padding:2px 4px}
+.file-card textarea{width:100%;height:120px;resize:vertical;padding:6px;font-size:11px;font-family:'SF Mono','Fira Code',monospace;line-height:1.4;border:1px solid var(--border);border-radius:var(--r)}
+.file-card textarea::placeholder{color:var(--muted)}
+/* DROP ZONE */
+#drop-zone{border:2px dashed var(--border);border-radius:var(--r);padding:14px 10px;text-align:center;margin-bottom:10px;transition:border-color .2s,background .2s;cursor:pointer}
+#drop-zone:hover,#drop-zone.dragover{border-color:var(--accent);background:rgba(124,106,247,.06)}
+.dz-icon{font-size:24px;margin-bottom:4px;opacity:.6}
+.dz-text{font-size:11px;color:var(--muted);margin-bottom:6px}
+.dz-browse{display:inline-block;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 12px;border-radius:var(--r);font-size:11px;cursor:pointer;transition:background .15s}
+.dz-browse:hover{background:var(--accent);border-color:var(--accent)}
+.dz-hint{font-size:10px;color:var(--muted);margin-top:4px}
+#blank-file-btn{width:100%;background:none;border:1px solid var(--border);color:var(--muted);padding:5px;border-radius:var(--r);font-size:11px;cursor:pointer;margin-bottom:8px;transition:border-color .15s,color .15s}
+#blank-file-btn:hover{border-color:var(--accent);color:var(--text)}
+
+#code-extra-area{padding:10px;border-top:1px solid var(--border);flex-shrink:0}
+#code-extra{width:100%;height:50px;resize:none;padding:6px;font-size:12px;line-height:1.4;border:1px solid var(--border);border-radius:var(--r)}
+#code-extra::placeholder{color:var(--muted)}
+
+/* HISTORY */
+#history-area{flex:1;overflow-y:auto;padding:10px}
+.history-empty{font-size:11px;color:var(--muted);text-align:center;padding-top:14px}
+.history-item{border:1px solid var(--border);border-left:2px solid transparent;border-radius:var(--r);padding:7px 9px;margin-bottom:6px;cursor:pointer;transition:border-color .15s,border-left-color .15s}
+.history-item:hover{border-color:var(--accent)}
+.history-item.active{border-left-color:var(--accent);background:var(--surface2)}
+.hi-tag{display:inline-block;font-size:9px;background:var(--accent);color:white;border-radius:3px;padding:1px 4px;margin-bottom:3px;text-transform:uppercase}
+.hi-tag.ast{background:#0d7377}
+.hi-tag.hybrid{background:#6c3483}
+.hi-text{font-size:11px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;color:var(--muted)}
+
+/* CONTENT */
+#content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* DIAGRAM TABS */
+#dtabs{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 10px;gap:2px;height:38px;flex-shrink:0}
+.dtab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);padding:0 14px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:color .15s,border-color .15s;white-space:nowrap}
+.dtab-btn:hover{color:var(--text)}
+.dtab-btn.active{color:var(--text);border-bottom-color:var(--accent)}
+#dtab-actions{margin-left:auto;display:flex;align-items:center;gap:6px}
+.act-btn{background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:3px 10px;border-radius:var(--r);font-size:11px;cursor:pointer;font-family:inherit;transition:background .15s}
+.act-btn:hover{background:var(--accent);border-color:var(--accent)}
+#zoom-controls{display:flex;align-items:center;gap:4px}
+#zoom-controls button{background:var(--surface2);color:var(--text);border:1px solid var(--border);width:24px;height:24px;border-radius:var(--r);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+#zoom-controls button:hover{background:var(--accent);border-color:var(--accent)}
+#zoom-label{font-size:11px;color:var(--muted);min-width:36px;text-align:center}
+
+/* DIAGRAM PANELS */
+#dpanels{flex:1;overflow:hidden;position:relative}
+.dpanel{position:absolute;inset:0;display:none}
+.dpanel.active{display:flex;flex-direction:column}
+
+/* PREVIEW PANEL */
+#preview-panel{overflow:hidden;cursor:grab;user-select:none}
+#preview-panel.dragging{cursor:grabbing}
+#diagram-viewport{width:100%;height:100%;overflow:hidden;position:relative}
+#diagram-container{transform-origin:top left;padding:30px;transition:transform .1s}
+.mermaid-svg-wrap svg{max-width:none!important}
+#diagram-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg);color:var(--muted);pointer-events:none}
+.empty-icon{font-size:40px;opacity:.3}
+
+/* SOURCE PANEL */
+#source-panel{flex-direction:column}
+#source-actions{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 10px;display:flex;gap:6px;flex-shrink:0}
+#source-editor{flex:1;resize:none;padding:12px;font-size:12px;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;line-height:1.6;border:none;outline:none;overflow:auto}
+
+/* STATUS */
+#statusbar{background:var(--surface);border-top:1px solid var(--border);padding:4px 12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;height:24px;flex-shrink:0}
+#status-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+#status-dot.ok{background:var(--success)}
+#status-dot.error{background:var(--error)}
+#status-dot.busy{background:var(--accent);animation:pulse 1s infinite}
+#status-source{margin-left:auto;font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:3px;border:1px solid var(--border)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.spinner{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* REVIEW TOGGLE */
+.review-toggle{display:flex;align-items:center;gap:6px;margin-top:7px;cursor:pointer;font-size:11px;color:var(--text)}
+.review-toggle input[type=checkbox]{accent-color:var(--accent);width:13px;height:13px;cursor:pointer}
+.review-hint{color:var(--muted);font-size:10px}
+
+/* RENDER ERROR */
+.render-error{padding:24px;color:var(--error);font-size:12px;line-height:1.6;background:rgba(248,81,73,.06);border:1px solid rgba(248,81,73,.2);border-radius:var(--r);margin:20px;}
+
+/* LEGEND */
+#legend{position:absolute;bottom:14px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);font-size:11px;min-width:190px;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.legend-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);font-weight:600;color:var(--text);cursor:pointer;user-select:none}
+.legend-header:hover{background:var(--surface2)}
+#legend-toggle{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 2px;line-height:1}
+.legend-body{padding:8px 10px;display:flex;flex-direction:column;gap:7px}
+.legend-item{display:flex;align-items:center;gap:9px}
+.legend-label{font-size:11px;color:var(--muted);white-space:nowrap}
+.rel-svg{width:64px;height:16px;flex-shrink:0}
+#context-banner{display:none;align-items:center;gap:6px;padding:6px 10px;background:rgba(124,106,247,.1);border-bottom:1px solid rgba(124,106,247,.3);font-size:11px;flex-shrink:0}
+#context-banner.show{display:flex}
+#context-label{flex:1;color:var(--accent)}
+#clear-context-btn{background:none;border:1px solid rgba(124,106,247,.4);color:var(--accent);padding:2px 7px;border-radius:var(--r);font-size:10px;cursor:pointer;white-space:nowrap}
+#clear-context-btn:hover{background:rgba(124,106,247,.2)}
+
+
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo"><span></span> UML Builder</div>
+  <div class="cfg-group">
+    <label>Token</label>
+    <input type="password" id="token-input" placeholder="API key…">
+  </div>
+  <div class="cfg-group">
+    <label>Provider</label>
+    <select id="provider-select">
+      <option value="anthropic">Anthropic</option>
+      <option value="openai">OpenAI</option>
+      <option value="gemini">Gemini</option>
+    </select>
+  </div>
+  <div class="cfg-group">
+    <label>Model</label>
+    <input type="text" id="model-input" value="claude-sonnet-4-6">
+  </div>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div id="mode-bar">
+      <button class="mode-btn active" data-mode="prompt">💬 Prompt</button>
+      <button class="mode-btn" data-mode="code">📁 Code Files</button>
+    </div>
+
+    <!-- PROMPT MODE -->
+    <div class="mode-panel active" id="mode-prompt">
+      <div class="sec-label">Describe or refine diagram</div>
+      <div id="context-banner">
+        <span id="context-label">🔷 Diagram active as context</span>
+        <button id="clear-context-btn">✕ Clear</button>
+      </div>
+      <div id="prompt-area">
+        <textarea id="prompt-input" placeholder="Describe what you want…&#10;&#10;e.g. A class diagram for a REST API with User, Post, Comment classes with relationships"></textarea>
+        <div class="hint">Ctrl+Enter to generate · diagram is kept for refinement</div>
+        <button class="gen-btn" id="prompt-gen-btn">Generate</button>
+      </div>
+      <div class="sec-label" style="border-top:none">History</div>
+      <div id="history-area">
+        <div class="history-empty" id="history-empty">No diagrams yet</div>
+        <div id="history-list"></div>
+      </div>
+    </div>
+
+    <!-- CODE MODE -->
+    <div class="mode-panel" id="mode-code">
+      <div class="sec-label">Paste or drop code files</div>
+      <div id="code-scroll">
+        <div id="drop-zone">
+          <div class="dz-icon">📂</div>
+          <div class="dz-text">Drop files here</div>
+          <label class="dz-browse">
+            Browse files
+            <input type="file" id="file-input" multiple accept=".py,.js,.ts,.jsx,.tsx,.java,.cs" style="display:none">
+          </label>
+          <div class="dz-hint">.py .js .ts .java .cs and more</div>
+        </div>
+        <button id="blank-file-btn">+ Add blank file</button>
+        <div id="file-list"></div>
+      </div>
+      <div id="code-extra-area">
+        <textarea id="code-extra" placeholder="Optional: additional instructions for the diagram…"></textarea>
+        <label class="review-toggle">
+          <input type="checkbox" id="llm-review-toggle" checked>
+          <span>LLM relationship review <span class="review-hint">(adds imports, usage, orchestration)</span></span>
+        </label>
+        <button class="gen-btn" id="code-gen-btn" style="margin-top:8px">Parse &amp; Generate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+    <div id="dtabs">
+      <button class="dtab-btn active" data-dtab="preview">🔷 Diagram</button>
+      <button class="dtab-btn" data-dtab="source">📝 Mermaid Source</button>
+      <div id="dtab-actions">
+        <div id="zoom-controls">
+          <button id="zoom-out">−</button>
+          <span id="zoom-label">100%</span>
+          <button id="zoom-in">+</button>
+          <button id="zoom-reset" title="Reset zoom">⊙</button>
+        </div>
+        <button class="act-btn" id="export-svg-btn">↓ SVG</button>
+        <button class="act-btn" id="copy-mermaid-btn">⎘ Copy</button>
+      </div>
+    </div>
+
+    <div id="dpanels">
+      <div class="dpanel active" id="preview-panel">
+        <div id="diagram-empty">
+          <div class="empty-icon">🔷</div>
+          <div>Generate a diagram to see it here</div>
+        </div>
+        <div id="diagram-viewport">
+          <div id="diagram-container"></div>
+        </div>
+
+        <!-- Floating legend -->
+        <div id="legend">
+          <div class="legend-header" id="legend-header">
+            <span>📖 Legend</span>
+            <button id="legend-toggle">−</button>
+          </div>
+          <div class="legend-body" id="legend-body">
+
+            <div class="legend-item">
+              <svg class="rel-svg" viewBox="0 0 64 16" xmlns="http://www.w3.org/2000/svg">
+                <line x1="2" y1="8" x2="52" y2="8" stroke="#7c6af7" stroke-width="1.5"/>
+                <polygon points="52,4 62,8 52,12" fill="#7c6af7"/>
+              </svg>
+              <span class="legend-label">Inheritance</span>
+            </div>
+
+            <div class="legend-item">
+              <svg class="rel-svg" viewBox="0 0 64 16" xmlns="http://www.w3.org/2000/svg">
+                <line x1="14" y1="8" x2="62" y2="8" stroke="#7c6af7" stroke-width="1.5"/>
+                <polygon points="2,8 9,4 16,8 9,12" fill="#7c6af7"/>
+              </svg>
+              <span class="legend-label">Composition</span>
+            </div>
+
+            <div class="legend-item">
+              <svg class="rel-svg" viewBox="0 0 64 16" xmlns="http://www.w3.org/2000/svg">
+                <line x1="14" y1="8" x2="62" y2="8" stroke="#7c6af7" stroke-width="1.5"/>
+                <polygon points="2,8 9,4 16,8 9,12" fill="none" stroke="#7c6af7" stroke-width="1.5"/>
+              </svg>
+              <span class="legend-label">Aggregation</span>
+            </div>
+
+            <div class="legend-item">
+              <svg class="rel-svg" viewBox="0 0 64 16" xmlns="http://www.w3.org/2000/svg">
+                <line x1="2" y1="8" x2="52" y2="8" stroke="#7c6af7" stroke-width="1.5"/>
+                <polyline points="46,4 56,8 46,12" fill="none" stroke="#7c6af7" stroke-width="1.5"/>
+              </svg>
+              <span class="legend-label">Association</span>
+            </div>
+
+            <div class="legend-item">
+              <svg class="rel-svg" viewBox="0 0 64 16" xmlns="http://www.w3.org/2000/svg">
+                <line x1="2" y1="8" x2="52" y2="8" stroke="#f97316" stroke-width="1.5" stroke-dasharray="4 3"/>
+                <polyline points="46,4 56,8 46,12" fill="none" stroke="#f97316" stroke-width="1.5"/>
+              </svg>
+              <span class="legend-label">Dependency / Import</span>
+            </div>
+
+            <div class="legend-item">
+              <svg class="rel-svg" viewBox="0 0 64 16" xmlns="http://www.w3.org/2000/svg">
+                <line x1="2" y1="8" x2="52" y2="8" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="4 3"/>
+                <polygon points="52,4 62,8 52,12" fill="#3fb950"/>
+              </svg>
+              <span class="legend-label">Realization / Impl</span>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="dpanel" id="source-panel">
+        <div id="source-actions">
+          <button class="act-btn" id="apply-source-btn">▶ Apply to Diagram</button>
+        </div>
+        <textarea id="source-editor" spellcheck="false" placeholder="Mermaid classDiagram source will appear here…"></textarea>
+      </div>
+    </div>
+
+    <div id="statusbar">
+      <div id="status-dot"></div>
+      <span id="status-text">Ready</span>
+      <span id="status-source" style="display:none"></span>
+    </div>
+  </div>
+</div>
+
+
+
+<script>
+'use strict';
+
+mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let currentMermaid = '';
+let currentDiagram = '';   // kept for refinement context
+let history        = [];   // conversation history for prompt mode
+let fileCounter    = 0;
+
+// Zoom/pan state
+let scale = 1, panX = 0, panY = 0;
+let isPanning = false, startX = 0, startY = 0;
+
+// ── PROVIDER DEFAULT MODEL ─────────────────────────────────────────────────
+const MODEL_DEFAULTS = { anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o', gemini: 'gemini-1.5-flash' };
+document.getElementById('provider-select').addEventListener('change', e => {
+  document.getElementById('model-input').value = MODEL_DEFAULTS[e.target.value] ?? '';
+});
+
+// ── MODE SWITCH ────────────────────────────────────────────────────────────
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('mode-' + btn.dataset.mode).classList.add('active');
+  });
+});
+
+// ── DIAGRAM TABS ───────────────────────────────────────────────────────────
+document.querySelectorAll('.dtab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!btn.dataset.dtab) return;
+    document.querySelectorAll('.dtab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.dpanel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.dtab + '-panel').classList.add('active');
+    if (btn.dataset.dtab === 'source') {
+      document.getElementById('source-editor').value = currentMermaid;
+    }
+  });
+});
+
+// ── ZOOM / PAN ─────────────────────────────────────────────────────────────
+function updateTransform() {
+  document.getElementById('diagram-container').style.transform =
+    `translate(${panX}px, ${panY}px) scale(${scale})`;
+  document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
+}
+
+document.getElementById('zoom-in').addEventListener('click',    () => { scale = Math.min(scale * 1.2, 4);    updateTransform(); });
+document.getElementById('zoom-out').addEventListener('click',   () => { scale = Math.max(scale * 0.83, 0.1); updateTransform(); });
+document.getElementById('zoom-reset').addEventListener('click', () => { scale = 1; panX = 0; panY = 0; updateTransform(); });
+
+const viewport = document.getElementById('preview-panel');
+viewport.addEventListener('wheel', e => {
+  e.preventDefault();
+  scale *= e.deltaY < 0 ? 1.1 : 0.91;
+  scale = Math.min(Math.max(scale, 0.1), 4);
+  updateTransform();
+}, { passive: false });
+
+viewport.addEventListener('mousedown', e => {
+  isPanning = true;
+  startX = e.clientX - panX;
+  startY = e.clientY - panY;
+  viewport.classList.add('dragging');
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  panX = e.clientX - startX;
+  panY = e.clientY - startY;
+  updateTransform();
+});
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  viewport.classList.remove('dragging');
+});
+
+// ── RENDER DIAGRAM ─────────────────────────────────────────────────────────
+async function renderDiagram(mermaidCode) {
+  const empty     = document.getElementById('diagram-empty');
+  const container = document.getElementById('diagram-container');
+
+  if (!mermaidCode.trim()) {
+    empty.style.display = 'flex';
+    container.innerHTML = '';
+    return;
+  }
+
+  try {
+    const id = 'uml_' + Date.now();
+    const { svg } = await mermaid.render(id, mermaidCode);
+    container.innerHTML = `<div class="mermaid-svg-wrap">${svg}</div>`;
+    empty.style.display = 'none';
+    panX = 0; panY = 0; scale = 1; updateTransform();
+  } catch (err) {
+    // Show error in diagram panel
+    const shortMsg = err.message?.split('\n')[0] ?? 'Syntax error';
+    container.innerHTML = `
+      <div class="render-error">
+        ⚠ <strong>Mermaid render error</strong><br><br>
+        ${escHtml(shortMsg)}<br><br>
+        The raw source has been opened in the <strong>Mermaid Source</strong> tab.
+        Edit it there and click <em>Apply to Diagram</em> to retry.
+      </div>`;
+    empty.style.display = 'none';
+    setStatus('Render error — check Source tab', 'error');
+
+    // Auto-switch to source tab so user can inspect and fix
+    document.querySelectorAll('.dtab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.dpanel').forEach(p => p.classList.remove('active'));
+    document.querySelector('[data-dtab="source"]').classList.add('active');
+    document.getElementById('source-panel').classList.add('active');
+  }
+}
+
+function setDiagram(mermaid, source) {
+  currentMermaid = mermaid;
+  currentDiagram = mermaid;       // ← FIX: was missing — this is what gets sent to LLM as context
+  document.getElementById('source-editor').value = mermaid;
+  renderDiagram(mermaid);
+  if (source) {
+    const el = document.getElementById('status-source');
+    el.style.display = '';
+    el.textContent = 'source: ' + source;
+  }
+  // Show context banner in prompt panel so user knows the diagram is active
+  const banner = document.getElementById('context-banner');
+  const label  = document.getElementById('context-label');
+  if (mermaid) {
+    const lines = mermaid.split('\n').length;
+    label.textContent = `🔷 Diagram active as context (${lines} lines)`;
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+function clearContext() {
+  currentDiagram = '';
+  history        = [];
+  document.getElementById('context-banner').classList.remove('show');
+  setStatus('Context cleared — next prompt starts fresh', 'ok');
+}
+
+document.getElementById('clear-context-btn').addEventListener('click', clearContext);
+
+// ── PROMPT MODE ────────────────────────────────────────────────────────────
+document.getElementById('prompt-gen-btn').addEventListener('click', generateFromPrompt);
+document.getElementById('prompt-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) generateFromPrompt();
+});
+
+async function generateFromPrompt() {
+  const token    = document.getElementById('token-input').value.trim();
+  const provider = document.getElementById('provider-select').value;
+  const model    = document.getElementById('model-input').value.trim();
+  const prompt   = document.getElementById('prompt-input').value.trim();
+
+  if (!token)  return setStatus('Enter your API token', 'error');
+  if (!prompt) return setStatus('Enter a prompt', 'error');
+
+  setBusy('prompt-gen-btn', true);
+  setStatus('Generating diagram…', 'busy');
+
+  try {
+    const res = await fetch('/api/diagram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token, model_provider: provider, model_name: model, prompt,
+        current_diagram: currentDiagram || null,
+        history,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail ?? res.statusText);
+    }
+    const data = await res.json();
+
+    history.push({ role: 'user',      content: prompt });
+    history.push({ role: 'assistant', content: data.mermaid });
+    currentDiagram = data.mermaid;
+
+    addHistoryEntry(prompt, data.mermaid, 'llm');
+    setDiagram(data.mermaid, `${data.provider} / ${data.model}`);
+    document.getElementById('prompt-input').value = '';
+    setStatus('Diagram generated', 'ok');
+  } catch (err) {
+    setStatus('Error: ' + err.message, 'error');
+  } finally {
+    setBusy('prompt-gen-btn', false);
+  }
+}
+
+// ── CODE MODE ──────────────────────────────────────────────────────────────
+let fileCards = [];
+
+// Blank file button
+document.getElementById('blank-file-btn').addEventListener('click', () => addFileCard());
+
+// File browser input
+document.getElementById('file-input').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  for (const file of files) await loadFile(file);
+  e.target.value = '';   // reset so same file can be re-selected
+  if (files.length) setStatus(`Loaded ${files.length} file(s)`, 'ok');
+});
+
+// Drop zone — click triggers file browse
+document.getElementById('drop-zone').addEventListener('click', e => {
+  if (e.target.tagName !== 'LABEL' && e.target.tagName !== 'INPUT')
+    document.getElementById('file-input').click();
+});
+
+// Drop zone — drag over styling
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragenter', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', e => { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('dragover'); });
+dropZone.addEventListener('dragover',  e => e.preventDefault());
+dropZone.addEventListener('drop', async e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const files = [...e.dataTransfer.files];
+  for (const file of files) await loadFile(file);
+  if (files.length) setStatus(`Loaded ${files.length} file(s)`, 'ok');
+});
+
+async function loadFile(file) {
+  const content = await file.text();
+  const ext = file.name.split('.').pop().toLowerCase();
+  const langMap = { py:'python', js:'javascript', ts:'typescript',
+                    jsx:'javascript', tsx:'typescript', java:'java', cs:'csharp' };
+  addFileCard(file.name, langMap[ext] || 'auto', content);
+}
+
+function addFileCard(filename = '', language = 'auto', content = '') {
+  const id = ++fileCounter;
+  const card = document.createElement('div');
+  card.className = 'file-card';
+  card.dataset.id = id;
+  card.innerHTML = `
+    <div class="file-card-header">
+      <input type="text" placeholder="filename.py" value="${escHtml(filename)}">
+      <select>
+        <option value="auto"   ${language==='auto'       ?'selected':''}>auto</option>
+        <option value="python" ${language==='python'     ?'selected':''}>Python</option>
+        <option value="javascript" ${language==='javascript'?'selected':''}>JavaScript</option>
+        <option value="typescript" ${language==='typescript'?'selected':''}>TypeScript</option>
+        <option value="java"   ${language==='java'       ?'selected':''}>Java</option>
+        <option value="csharp" ${language==='csharp'     ?'selected':''}>C#</option>
+      </select>
+      <button onclick="removeFileCard(${id})" title="Remove">✕</button>
+    </div>
+    <textarea placeholder="Paste your code here…">${escHtml(content)}</textarea>
+  `;
+  document.getElementById('file-list').appendChild(card);
+  fileCards.push(id);
+}
+
+function removeFileCard(id) {
+  const card = document.querySelector(`.file-card[data-id="${id}"]`);
+  if (card) card.remove();
+  fileCards = fileCards.filter(i => i !== id);
+}
+
+document.getElementById('code-gen-btn').addEventListener('click', generateFromCode);
+
+async function generateFromCode() {
+  const token    = document.getElementById('token-input').value.trim();
+  const provider = document.getElementById('provider-select').value;
+  const model    = document.getElementById('model-input').value.trim();
+  const extra      = document.getElementById('code-extra').value.trim();
+  const llm_review = document.getElementById('llm-review-toggle').checked;
+
+  if (!token) return setStatus('Enter your API token', 'error');
+
+  const cards = document.querySelectorAll('.file-card');
+  if (!cards.length) return setStatus('Add at least one code file', 'error');
+
+  const files = [...cards].map(card => ({
+    filename: card.querySelector('input').value.trim() || 'unnamed',
+    language: card.querySelector('select').value,
+    content:  card.querySelector('textarea').value.trim(),
+  })).filter(f => f.content);
+
+  if (!files.length) return setStatus('No code content found in any file', 'error');
+
+  setBusy('code-gen-btn', true);
+  setStatus(`Parsing ${files.length} file(s)${llm_review ? ' + LLM review…' : '…'}`, 'busy');
+
+  try {
+    const res = await fetch('/api/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token, model_provider: provider, model_name: model,
+        files, additional_prompt: extra || null, llm_review,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail ?? res.statusText);
+    }
+    const data = await res.json();
+
+    const label = files.map(f => f.filename).join(', ');
+    addHistoryEntry(label, data.mermaid, data.source);
+    setDiagram(data.mermaid, `${data.source} · ${data.provider ?? ''}/${data.model ?? ''}`);
+    setStatus(`Diagram generated (${data.source})`, 'ok');
+  } catch (err) {
+    setStatus('Error: ' + err.message, 'error');
+  } finally {
+    setBusy('code-gen-btn', false);
+  }
+}
+
+// ── SOURCE EDITOR ──────────────────────────────────────────────────────────
+document.getElementById('apply-source-btn').addEventListener('click', () => {
+  const code = document.getElementById('source-editor').value.trim();
+  if (code) {
+    currentMermaid = code;
+    renderDiagram(code);
+    // Switch to diagram tab
+    document.querySelectorAll('.dtab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.dpanel').forEach(p => p.classList.remove('active'));
+    document.querySelector('[data-dtab="preview"]').classList.add('active');
+    document.getElementById('preview-panel').classList.add('active');
+    setStatus('Diagram updated from source', 'ok');
+  }
+});
+
+// ── EXPORT ─────────────────────────────────────────────────────────────────
+document.getElementById('export-svg-btn').addEventListener('click', () => {
+  const svg = document.querySelector('#diagram-container svg');
+  if (!svg) return setStatus('No diagram to export', 'error');
+  const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob), download: 'diagram.svg'
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+  setStatus('SVG exported', 'ok');
+});
+
+document.getElementById('copy-mermaid-btn').addEventListener('click', async () => {
+  if (!currentMermaid) return;
+  await navigator.clipboard.writeText(currentMermaid);
+  setStatus('Copied to clipboard', 'ok');
+});
+
+// ── HISTORY ────────────────────────────────────────────────────────────────
+function addHistoryEntry(label, mermaid, source) {
+  document.getElementById('history-empty').style.display = 'none';
+  const list = document.getElementById('history-list');
+  const item = document.createElement('div');
+  item.className = 'history-item active';
+  const tagClass = source === 'ast' ? 'ast' : source === 'hybrid' ? 'hybrid' : '';
+  item.innerHTML = `
+    <span class="hi-tag ${tagClass}">${source}</span>
+    <div class="hi-text">${escHtml(label)}</div>
+  `;
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    setDiagram(mermaid, source);
+    setStatus('Restored from history', 'ok');
+  });
+  document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+  list.prepend(item);
+}
+
+// ── LEGEND TOGGLE ──────────────────────────────────────────────────────────
+document.getElementById('legend-header').addEventListener('click', () => {
+  const body      = document.getElementById('legend-body');
+  const btn       = document.getElementById('legend-toggle');
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? 'flex' : 'none';
+  btn.textContent    = collapsed ? '−' : '+';
+});
+
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function setBusy(btnId, busy) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = busy;
+  if (btnId === 'prompt-gen-btn')
+    btn.innerHTML = busy ? '<div class="spinner"></div>Generating…' : 'Generate';
+  else
+    btn.innerHTML = busy ? '<div class="spinner"></div>Parsing…' : 'Parse &amp; Generate';
+}
+
+function setStatus(msg, state = '') {
+  document.getElementById('status-text').textContent = msg;
+  document.getElementById('status-dot').className = state;
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── INIT: add one empty file card by default ───────────────────────────────
+addFileCard();
+</script>
+</body>
+</html>
