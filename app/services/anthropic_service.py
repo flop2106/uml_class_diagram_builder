@@ -40,6 +40,57 @@ Extract ALL classes, interfaces, enums, abstract classes and their:
 - Methods with parameter types and return types
 - All relationships: inheritance, implementation, composition, aggregation, association
 
+IMPORTANT — node ID rules:
+Mermaid node IDs must be valid identifiers: letters, digits, and underscores ONLY.
+NEVER use a hyphen, dot, or space in a node ID — Mermaid's parser treats hyphens as part of
+relationship syntax (-->, --|>) and will break the entire diagram's layout if a class name
+contains one. If a filename like "app-config.ts" is used as a node ID, convert it to
+"app_config" (hyphens and dots replaced with underscores) — but keep the ORIGINAL filename
+unchanged inside the quoted label.
+
+IMPORTANT — filename labeling:
+Every class/interface block MUST show its source filename using this exact Mermaid syntax:
+  class ClassName["ClassName (filename.ext)"] {
+      ...
+  }
+The node ID (ClassName) must be a clean valid identifier with no parentheses, hyphens, or dots —
+only the quoted label shows the original filename. Use the EXACT filename given in the "File:"
+header of the input for the label text.
+If a file defines module-level functions with no class, wrap them the same way using a
+sanitized version of the filename (without extension, hyphens/dots replaced with underscores)
+as the node ID, e.g. for "utils-helper.js":
+  class utils_helper["utils_helper (utils-helper.js)"] {
+      <<module>>
+      +parseData(input)
+  }
+
+IMPORTANT — attribute and method type syntax:
+Mermaid's classDiagram grammar does NOT understand TypeScript type syntax. When converting
+TypeScript types, you MUST simplify them as follows:
+
+  BAD  (breaks the parser):  +deployApp(name: string, secret?: string): Promise<void>
+  GOOD:                      +deployApp(name string, secret string) void
+
+  BAD  (curly braces collide with class block delimiters):
+       +createMatrix(): { include: Array<{ name: string }> }
+  GOOD (replace inline object/generic types with a plain word):
+       +createMatrix() object
+
+  BAD  (angle brackets collide with relationship arrows):
+       +items: Array<Deployment>
+       +cache: Record<string, string>
+  GOOD (use Mermaid's tilde generic syntax, or just drop to a plain type):
+       +items Deployment~list~
+       +cache object
+
+Rules, in order of priority:
+1. NEVER write a curly brace { or } anywhere inside an attribute or method line — only the
+   class block's own opening/closing braces may contain { or }.
+2. NEVER write a TypeScript-style optional marker "?:" — drop the "?" entirely.
+3. Avoid angle-bracket generics entirely if possible; if you must show a generic type, use
+   ~Type~ instead of <Type>. When in doubt, simplify the type to a plain word (object, list,
+   string, number) rather than trying to preserve the exact TypeScript type expression.
+
 Respond ONLY with valid Mermaid classDiagram syntax.
 No markdown fences, no explanations. Start with exactly: classDiagram"""
 
@@ -48,6 +99,9 @@ Merge them into a single coherent Mermaid classDiagram that:
 1. Deduplicates classes that appear in multiple snippets
 2. Shows cross-file relationships (associations, dependencies)
 3. Preserves all attributes, methods and relationships
+4. PRESERVES filename labels exactly as given, e.g. class Foo["Foo (foo.py)"] — do NOT
+   strip the quoted label or the filename in parentheses. If a class appears in multiple
+   snippets with different filename labels, keep the first one encountered.
 
 Respond ONLY with the merged Mermaid classDiagram syntax. No fences, no explanations.
 Start with exactly: classDiagram"""
