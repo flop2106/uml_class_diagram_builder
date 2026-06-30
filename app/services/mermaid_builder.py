@@ -128,7 +128,71 @@ def build_mermaid(classes: list[ClassInfo],
                 lines.append(f"    {rel.source_module} ..> {rel.target_module} : {rel.relation_label}")
                 seen_import.add(pair)
 
-    return "\n".join(lines)
+    return collapse_empty_class_blocks("\n".join(lines))
+
+
+def collapse_empty_class_blocks(diagram: str) -> str:
+    """
+    Mermaid's classDiagram parser has been observed to choke on a class
+    block whose opening brace is immediately followed by a closing brace
+    with nothing in between (no attributes, no methods, no classifier) —
+    e.g.:
+        class PlatformDeps["PlatformDeps (platform.ts)"] {
+        }
+    Rather than rely on undocumented parser internals to explain exactly
+    why, sidestep the problem: Mermaid also supports declaring a class with
+    NO body block at all — a single line like
+        class PlatformDeps["PlatformDeps (platform.ts)"]
+    is valid syntax and renders identically. Collapse any class block whose
+    body is empty (only whitespace) down to that single-line form.
+
+    A class with a classifier (<<module>>, <<interface>>, etc.) or any
+    member line is left untouched — only truly empty bodies are affected.
+    """
+    pattern = re.compile(
+        r'class\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?\s*\{\s*\}'
+    )
+    return pattern.sub(lambda m: f'class {m.group(1)}{m.group(2) or ""}', diagram)
+
+
+def sanitize_node_ids(diagram: str) -> str:
+    """
+    Mermaid classDiagram node IDs must be valid identifiers — letters, digits,
+    underscores only. Hyphens or dots in an unquoted node ID are ambiguous with
+    relationship syntax (-->, --|>, etc.) and break the dagre layout engine,
+    producing 'translate(undefined, NaN)' errors at render time.
+
+    This catches cases where an LLM used a raw filename-derived ID containing
+    hyphens (e.g. "app-config") instead of sanitizing it, even though it was
+    instructed to. Quoted label text (the part in ["..."]) is left untouched —
+    only the bare identifier is rewritten, consistently across every reference
+    to it (class declarations, relationship lines).
+    """
+    # Protect quoted strings so we never rewrite text inside labels
+    placeholders: list[str] = []
+
+    def _stash(m):
+        placeholders.append(m.group(0))
+        return f"\x00Q{len(placeholders) - 1}\x00"
+
+    protected = re.sub(r'"[^"]*"', _stash, diagram)
+
+    # Collect every node ID declared via `class <id>`
+    raw_ids = set(re.findall(r'class\s+([A-Za-z_][A-Za-z0-9_.\-]*)', protected))
+    mapping = {
+        i: re.sub(r'[^A-Za-z0-9_]', '_', i)
+        for i in raw_ids
+        if re.search(r'[^A-Za-z0-9_]', i)   # only touch IDs with invalid chars
+    }
+
+    for old, new in mapping.items():
+        protected = re.sub(rf'\b{re.escape(old)}\b', new, protected)
+
+    # Restore quoted strings exactly as they were
+    def _restore(m):
+        return placeholders[int(m.group(1))]
+
+    return re.sub(r'\x00Q(\d+)\x00', _restore, protected)
 
 
 def _ascii_safe(text: str) -> str:
@@ -155,6 +219,93 @@ def _ascii_safe(text: str) -> str:
         text = text.replace(char, replacement)
     # Drop anything still non-ASCII
     return text.encode('ascii', errors='ignore').decode('ascii')
+
+
+def sanitize_member_syntax(diagram: str) -> str:
+    """
+    Defensive cleanup for LLM-generated method/attribute lines using
+    TypeScript-style syntax that Mermaid's classDiagram grammar cannot parse:
+
+    - Nested curly-brace object-type literals, e.g.
+        +createMatrix(): { include: Array<{ name: string }> }
+      Curly braces are reserved by Mermaid to open/close a class block — an
+      extra { or } inside a member line throws off the parser's brace count
+      for the REST of the diagram, not just that one line.
+
+    - Generic angle brackets, e.g. Array<Foo>, Promise<void>, Record<K, V>
+      Mermaid uses ~Type~ for generics; raw < > collides with relationship
+      arrow tokens (-->, <|--) and corrupts the diagram's layout (the
+      "translate(undefined, NaN)" class of dagre errors).
+
+    - TypeScript optional-parameter markers, e.g. "name?: string"
+      Not part of Mermaid's method-parameter grammar.
+
+    Only lines that look like attribute/method members (start with a
+    visibility marker +/-/#/~) are touched. Class headers, relationship
+    lines, and classifier lines (<<module>>, <<abstract>>) are left as-is.
+    """
+    out = []
+    for line in diagram.split('\n'):
+        stripped = line.lstrip()
+        if stripped[:1] in ('+', '-', '#', '~'):
+            line = _clean_member_line(line)
+        out.append(line)
+    return '\n'.join(out)
+
+
+def _clean_member_line(line: str) -> str:
+    # Collapse nested curly-brace object-type literals into "object",
+    # innermost-first, repeatedly, until none remain.
+    prev = None
+    while '{' in line and line != prev:
+        prev = line
+        line = re.sub(r'\{[^{}]*\}', 'object', line)
+
+    # Convert generic angle brackets to Mermaid's tilde syntax, innermost
+    # first. Commas inside a generic (Record<K, V>) become spaces since
+    # Mermaid's tilde notation doesn't support comma-separated type params.
+    prev = None
+    while re.search(r'<[^<>]*>', line) and line != prev:
+        prev = line
+        line = re.sub(
+            r'<([^<>]*)>',
+            lambda m: '~' + m.group(1).replace(',', ' ').strip() + '~',
+            line,
+        )
+
+    # Drop TypeScript optional-parameter markers: name?: type → name: type
+    line = re.sub(r'(\w)\?\s*:', r'\1:', line)
+
+    return line
+
+
+def fix_relationship_arrows(diagram: str) -> str:
+    """
+    Defensive fix for malformed relationship arrow tokens that LLMs
+    occasionally emit. The most common: a single dot before the arrowhead
+    (" .> ") instead of Mermaid's required two-dot dependency syntax
+    (" ..> "). A lone ".>" is not a token Mermaid's grammar recognizes at
+    all, so it fails the parser outright rather than just rendering oddly.
+
+    Quoted label text is protected so we never rewrite something that
+    happens to contain ".>" inside a string.
+    """
+    placeholders: list[str] = []
+
+    def _stash(m):
+        placeholders.append(m.group(0))
+        return f"\x00Q{len(placeholders) - 1}\x00"
+
+    protected = re.sub(r'"[^"]*"', _stash, diagram)
+
+    # Single dot immediately before '>' that is NOT already preceded by
+    # another dot (so we don't touch a correct "..>" and turn it into "...>").
+    protected = re.sub(r'(?<!\.)\.>', '..>', protected)
+
+    def _restore(m):
+        return placeholders[int(m.group(1))]
+
+    return re.sub(r'\x00Q(\d+)\x00', _restore, protected)
 
 
 def clean_llm_mermaid(raw: str) -> str:
@@ -197,4 +348,8 @@ def clean_llm_mermaid(raw: str) -> str:
             break
         diagram_lines.append(line)
 
-    return _ascii_safe('\n'.join(diagram_lines).strip())
+    text = _ascii_safe('\n'.join(diagram_lines).strip())
+    text = sanitize_member_syntax(text)
+    text = fix_relationship_arrows(text)
+    text = collapse_empty_class_blocks(text)
+    return sanitize_node_ids(text)

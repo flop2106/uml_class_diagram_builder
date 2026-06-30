@@ -29,10 +29,17 @@ input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{bo
 select option{background:var(--surface2)}
 
 /* MAIN */
-#main{display:flex;flex:1;overflow:hidden}
+#main{display:flex;flex:1;overflow:hidden;position:relative}
 
 /* SIDEBAR */
-#sidebar{width:290px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+#sidebar{width:290px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:width .2s,min-width .2s;min-width:290px}
+#sidebar.collapsed{width:0;min-width:0;border-right:none}
+#sidebar.collapsed > *{display:none}
+
+/* SIDEBAR TOGGLE TAB — anchored to #main, tracks sidebar edge via left offset */
+#sidebar-toggle{position:absolute;top:50%;left:290px;transform:translateY(-50%);width:16px;height:48px;background:var(--surface2);border:1px solid var(--border);border-left:none;border-radius:0 6px 6px 0;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;z-index:20;transition:left .2s,background .15s;padding:0}
+#sidebar-toggle:hover{background:var(--accent);color:white}
+#sidebar-toggle.at-edge{left:0}
 
 /* MODE TABS */
 #mode-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -124,7 +131,9 @@ select option{background:var(--surface2)}
 /* SOURCE PANEL */
 #source-panel{flex-direction:column}
 #source-actions{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 10px;display:flex;gap:6px;flex-shrink:0}
-#source-editor{flex:1;resize:none;padding:12px;font-size:12px;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;line-height:1.6;border:none;outline:none;overflow:auto}
+#source-editor-wrap{flex:1;display:flex;overflow:hidden;position:relative}
+#source-gutter{flex-shrink:0;padding:12px 8px 12px 0;text-align:right;font-size:12px;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;line-height:1.6;color:var(--muted);background:var(--surface);border-right:1px solid var(--border);user-select:none;overflow:hidden;white-space:pre;min-width:34px}
+#source-editor{flex:1;resize:none;padding:12px;font-size:12px;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;line-height:1.6;border:none;outline:none;overflow:auto;white-space:pre;tab-size:2}
 
 /* STATUS */
 #statusbar{background:var(--surface);border-top:1px solid var(--border);padding:4px 12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;height:24px;flex-shrink:0}
@@ -143,7 +152,19 @@ select option{background:var(--surface2)}
 .review-hint{color:var(--muted);font-size:10px}
 
 /* RENDER ERROR */
-.render-error{padding:24px;color:var(--error);font-size:12px;line-height:1.6;background:rgba(248,81,73,.06);border:1px solid rgba(248,81,73,.2);border-radius:var(--r);margin:20px;}
+.render-error{padding:24px;color:var(--error);font-size:12px;line-height:1.6;background:rgba(248,81,73,.06);border:1px solid rgba(248,81,73,.2);border-radius:var(--r);margin:20px;position:relative}
+.render-error-close{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--error);font-size:16px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;transition:background .15s}
+.render-error-close:hover{background:rgba(248,81,73,.15)}
+
+/* Stray Mermaid error SVGs that escape into document.body on render failure.
+   IMPORTANT: do NOT blanket-hide [id^="duml_"] — Mermaid uses that exact
+   prefix for its legitimate off-screen text-measurement container on every
+   successful render too. display:none on it makes the browser report 0
+   for all size measurements, collapsing every foreignObject to width=0
+   height=0 (the diagram silently renders as a blank/collapsed shape with
+   no console error). Only target elements that are unambiguously errors. */
+body > svg[aria-roledescription="error"],
+body > svg.error-icon { display: none !important; }
 
 /* LEGEND */
 #legend{position:absolute;bottom:14px;right:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);font-size:11px;min-width:190px;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4)}
@@ -238,6 +259,8 @@ select option{background:var(--surface2)}
     </div>
   </div>
 
+  <button id="sidebar-toggle" title="Toggle sidebar">‹</button>
+
   <!-- CONTENT -->
   <div id="content">
     <div id="dtabs">
@@ -252,6 +275,7 @@ select option{background:var(--surface2)}
         </div>
         <button class="act-btn" id="export-svg-btn">↓ SVG</button>
         <button class="act-btn" id="copy-mermaid-btn">⎘ Copy</button>
+        <button class="act-btn" id="cleanup-popups-btn" title="Remove stray Mermaid render artifacts">🧹 Clean</button>
       </div>
     </div>
 
@@ -329,7 +353,10 @@ select option{background:var(--surface2)}
         <div id="source-actions">
           <button class="act-btn" id="apply-source-btn">▶ Apply to Diagram</button>
         </div>
-        <textarea id="source-editor" spellcheck="false" placeholder="Mermaid classDiagram source will appear here…"></textarea>
+        <div id="source-editor-wrap">
+          <div id="source-gutter">1</div>
+          <textarea id="source-editor" spellcheck="false" placeholder="Mermaid classDiagram source will appear here…"></textarea>
+        </div>
       </div>
     </div>
 
@@ -383,7 +410,7 @@ document.querySelectorAll('.dtab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(btn.dataset.dtab + '-panel').classList.add('active');
     if (btn.dataset.dtab === 'source') {
-      document.getElementById('source-editor').value = currentMermaid;
+      setSourceEditorValue(currentMermaid);
     }
   });
 });
@@ -425,6 +452,103 @@ window.addEventListener('mouseup', () => {
 });
 
 // ── RENDER DIAGRAM ─────────────────────────────────────────────────────────
+// ── NODE ID SANITIZER ────────────────────────────────────────────────────
+// Mirrors the Python sanitize_node_ids() — defensive client-side safety net.
+// Mermaid node IDs must be letters/digits/underscores only; hyphens or dots
+// collide with relationship syntax (-->, --|>) and break dagre's layout,
+// producing "translate(undefined, NaN)" errors. This catches diagrams that
+// reach the browser without having passed through the backend sanitizer
+// (e.g. items restored from in-memory history, or manually edited source).
+function sanitizeMermaidNodeIds(diagram) {
+  const placeholders = [];
+  let text = diagram.replace(/"[^"]*"/g, m => {
+    placeholders.push(m);
+    return `\x00Q${placeholders.length - 1}\x00`;
+  });
+
+  const ids = new Set();
+  const idRegex = /class\s+([A-Za-z_][A-Za-z0-9_.\-]*)/g;
+  let match;
+  while ((match = idRegex.exec(text)) !== null) ids.add(match[1]);
+
+  ids.forEach(id => {
+    if (/[^A-Za-z0-9_]/.test(id)) {
+      const sanitized = id.replace(/[^A-Za-z0-9_]/g, '_');
+      const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp(`\\b${escaped}\\b`, 'g'), sanitized);
+    }
+  });
+
+  return text.replace(/\x00Q(\d+)\x00/g, (_, idx) => placeholders[Number(idx)]);
+}
+
+// ── MEMBER SYNTAX SANITIZER ─────────────────────────────────────────────
+// Mirrors the Python sanitize_member_syntax() — catches TypeScript-style
+// syntax in method/attribute lines that Mermaid cannot parse: nested
+// curly-brace object types, generic angle brackets, and optional-param
+// markers ("name?: type"). Only touches lines starting with a visibility
+// marker (+/-/#/~); class headers and relationship lines are untouched.
+function sanitizeMermaidMemberSyntax(diagram) {
+  return diagram.split('\n').map(line => {
+    const stripped = line.trimStart();
+    if (!['+', '-', '#', '~'].includes(stripped[0])) return line;
+
+    let result = line;
+    let prev;
+
+    // Collapse nested curly-brace object-type literals into "object"
+    do {
+      prev = result;
+      result = result.replace(/\{[^{}]*\}/g, 'object');
+    } while (result !== prev && result.includes('{'));
+
+    // Convert generic angle brackets to Mermaid's tilde syntax
+    do {
+      prev = result;
+      result = result.replace(/<([^<>]*)>/g, (_, inner) =>
+        '~' + inner.replace(/,/g, ' ').trim() + '~');
+    } while (result !== prev && /<[^<>]*>/.test(result));
+
+    // Drop TypeScript optional-parameter markers: name?: type → name: type
+    result = result.replace(/(\w)\?\s*:/g, '$1:');
+
+    return result;
+  }).join('\n');
+}
+
+// ── ARROW SYNTAX FIX ───────────────────────────────────────────────────────
+// Mirrors the Python fix_relationship_arrows(). LLMs occasionally emit a
+// single-dot dependency arrow (" .> ") instead of Mermaid's required
+// two-dot syntax (" ..> "). A lone ".>" is not a recognized token at all,
+// so it fails the parser outright. Quoted labels are protected.
+function fixRelationshipArrows(diagram) {
+  const placeholders = [];
+  let text = diagram.replace(/"[^"]*"/g, m => {
+    placeholders.push(m);
+    return `\x00Q${placeholders.length - 1}\x00`;
+  });
+
+  // Single dot before '>' not already preceded by another dot
+  text = text.replace(/([^.])\.>/g, '$1..>');
+  // Handle case where the single dot is the very first character of a line
+  text = text.replace(/^\.>/gm, '..>');
+
+  return text.replace(/\x00Q(\d+)\x00/g, (_, idx) => placeholders[Number(idx)]);
+}
+
+// ── EMPTY CLASS BLOCK COLLAPSE ──────────────────────────────────────────────
+// Mirrors the Python collapse_empty_class_blocks(). Mermaid's parser has
+// been observed to choke on a class block whose body is completely empty
+// ("class Foo[\"...\"] {\n}" with nothing between the braces). Mermaid also
+// accepts a brace-less single-line declaration that renders identically,
+// so collapse any empty body down to that form instead.
+function collapseEmptyClassBlocks(diagram) {
+  return diagram.replace(
+    /class\s+([A-Za-z_][A-Za-z0-9_]*)(\s*\[[^\]]*\])?\s*\{\s*\}/g,
+    (_, id, label) => `class ${id}${label || ''}`
+  );
+}
+
 async function renderDiagram(mermaidCode) {
   const empty     = document.getElementById('diagram-empty');
   const container = document.getElementById('diagram-container');
@@ -435,6 +559,19 @@ async function renderDiagram(mermaidCode) {
     return;
   }
 
+  // Sanitize before every render attempt — fixes broken member syntax,
+  // malformed arrows, empty class blocks, and hyphenated/dotted node IDs,
+  // regardless of where the source came from.
+  let sanitized = sanitizeMermaidMemberSyntax(mermaidCode);
+  sanitized = fixRelationshipArrows(sanitized);
+  sanitized = collapseEmptyClassBlocks(sanitized);
+  sanitized = sanitizeMermaidNodeIds(sanitized);
+  if (sanitized !== mermaidCode) {
+    mermaidCode = sanitized;
+    currentMermaid = sanitized;          // keep state consistent
+    setSourceEditorValue(sanitized);
+  }
+
   try {
     const id = 'uml_' + Date.now();
     const { svg } = await mermaid.render(id, mermaidCode);
@@ -442,10 +579,14 @@ async function renderDiagram(mermaidCode) {
     empty.style.display = 'none';
     panX = 0; panY = 0; scale = 1; updateTransform();
   } catch (err) {
-    // Show error in diagram panel
+    // Mermaid injects its own error SVGs directly into document.body on parse
+    // failure — bypassing our container entirely. Remove all of them.
+    removeStrayMermaidErrors();
+
     const shortMsg = err.message?.split('\n')[0] ?? 'Syntax error';
     container.innerHTML = `
       <div class="render-error">
+        <button class="render-error-close" id="dismiss-render-error" title="Dismiss">✕</button>
         ⚠ <strong>Mermaid render error</strong><br><br>
         ${escHtml(shortMsg)}<br><br>
         The raw source has been opened in the <strong>Mermaid Source</strong> tab.
@@ -453,6 +594,12 @@ async function renderDiagram(mermaidCode) {
       </div>`;
     empty.style.display = 'none';
     setStatus('Render error — check Source tab', 'error');
+
+    document.getElementById('dismiss-render-error')?.addEventListener('click', () => {
+      container.innerHTML = '';
+      empty.style.display = 'flex';
+      setStatus('Ready', '');
+    });
 
     // Auto-switch to source tab so user can inspect and fix
     document.querySelectorAll('.dtab-btn').forEach(b => b.classList.remove('active'));
@@ -462,10 +609,47 @@ async function renderDiagram(mermaidCode) {
   }
 }
 
+function removeStrayMermaidErrors() {
+  // Mermaid creates temporary measurement containers / error diagrams
+  // directly under <body> using the render id we pass ("uml_...") prefixed
+  // with "d" — e.g. "duml_1782787062596". This function only runs AFTER a
+  // render attempt has already failed (or before any render has started,
+  // on page load) — never during an in-flight successful render — so it's
+  // safe to actively remove these elements at those points. (Unlike the
+  // CSS rule that used to blanket-hide [id^="duml_"] permanently, which
+  // broke Mermaid's text measurement for every diagram — see the CSS
+  // comment above for details.)
+  let removed = 0;
+
+  document.querySelectorAll('[id^="duml_"]').forEach(el => {
+    el.remove();
+    removed++;
+  });
+
+  const appRoot = document.getElementById('main');
+  [...document.body.children].forEach(el => {
+    const isOurs = el === appRoot ||
+                   el.id === 'topbar' ||
+                   el.tagName === 'SCRIPT' ||
+                   el.tagName === 'STYLE';
+    if (!isOurs && (el.tagName === 'SVG' || el.querySelector?.('svg.error-icon'))) {
+      el.remove();
+      removed++;
+    }
+  });
+
+  return removed;
+}
+
+document.getElementById('cleanup-popups-btn').addEventListener('click', () => {
+  const removed = removeStrayMermaidErrors();
+  setStatus(removed ? `Cleaned ${removed} stray element(s)` : 'Nothing to clean', 'ok');
+});
+
 function setDiagram(mermaid, source) {
   currentMermaid = mermaid;
   currentDiagram = mermaid;       // ← FIX: was missing — this is what gets sent to LLM as context
-  document.getElementById('source-editor').value = mermaid;
+  setSourceEditorValue(mermaid);
   renderDiagram(mermaid);
   if (source) {
     const el = document.getElementById('status-source');
@@ -718,6 +902,43 @@ function addHistoryEntry(label, mermaid, source) {
   list.prepend(item);
 }
 
+// ── SOURCE EDITOR LINE NUMBERS ─────────────────────────────────────────────
+const sourceEditorEl = document.getElementById('source-editor');
+const sourceGutterEl = document.getElementById('source-gutter');
+
+function updateSourceGutter() {
+  const lineCount = sourceEditorEl.value.split('\n').length;
+  // Build "1\n2\n3..." matching the textarea's line count
+  let nums = '';
+  for (let i = 1; i <= lineCount; i++) nums += i + '\n';
+  sourceGutterEl.textContent = nums.slice(0, -1);
+}
+
+sourceEditorEl.addEventListener('input', updateSourceGutter);
+sourceEditorEl.addEventListener('scroll', () => {
+  sourceGutterEl.scrollTop = sourceEditorEl.scrollTop;
+});
+
+// Keep gutter in sync whenever .value is set programmatically elsewhere
+// (setDiagram, history restore, tab switch) by observing value changes.
+// MutationObserver doesn't fire on .value, so we wrap a tiny setter helper:
+function setSourceEditorValue(text) {
+  sourceEditorEl.value = text;
+  updateSourceGutter();
+  sourceEditorEl.scrollTop = 0;
+  sourceGutterEl.scrollTop = 0;
+}
+
+// ── SIDEBAR TOGGLE ─────────────────────────────────────────────────────────
+const sidebarToggleBtn = document.getElementById('sidebar-toggle');
+sidebarToggleBtn.addEventListener('click', () => {
+  const sidebar    = document.getElementById('sidebar');
+  const collapsed  = sidebar.classList.toggle('collapsed');
+  sidebarToggleBtn.classList.toggle('at-edge', collapsed);
+  sidebarToggleBtn.textContent = collapsed ? '›' : '‹';
+  sidebarToggleBtn.title = collapsed ? 'Show sidebar' : 'Hide sidebar';
+});
+
 // ── LEGEND TOGGLE ──────────────────────────────────────────────────────────
 document.getElementById('legend-header').addEventListener('click', () => {
   const body      = document.getElementById('legend-body');
@@ -747,6 +968,7 @@ function escHtml(s) {
 }
 
 // ── INIT: add one empty file card by default ───────────────────────────────
+removeStrayMermaidErrors();
 addFileCard();
 </script>
 </body>

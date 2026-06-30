@@ -15,12 +15,32 @@ UML_SYSTEM_PROMPT = (
 
 CODE_EXTRACT_SYSTEM = (
     "You are a code analyzer. Extract all classes, interfaces, and their relationships from the provided code. "
+    "CRITICAL: Mermaid node IDs must contain ONLY letters, digits, and underscores — NEVER a hyphen, dot, "
+    "or space. Hyphens break Mermaid's layout engine because they collide with relationship syntax (-->, --|>). "
+    'If a filename like "app-config.ts" would be used as a node ID, sanitize it to "app_config" first. '
+    "IMPORTANT: every class/interface block MUST show its source filename using this exact syntax: "
+    'class ClassName["ClassName (filename.ext)"] {{ ... }} — the node ID stays a clean valid identifier '
+    "(no hyphens, dots, or parentheses), only the quoted label carries the ORIGINAL filename unchanged. "
+    "Use the exact filename given in the File: header of the input for the label text. "
+    "For module-level functions with no class, use a sanitized filename (without extension, hyphens/dots "
+    'replaced with underscores) as the node ID with <<module>> classifier, e.g. for "utils-helper.js": '
+    'class utils_helper["utils_helper (utils-helper.js)"] {{ <<module>> +parseData(input) }}. '
+    "CRITICAL — type syntax: Mermaid does NOT understand TypeScript types. NEVER write a curly brace "
+    "{ or } inside an attribute/method line (only the class block's own braces may contain them) — "
+    'e.g. "createMatrix(): { include: Array<X> }" must become "createMatrix() object". NEVER write the '
+    'optional-parameter marker "?:" — drop the "?". Avoid angle-bracket generics like Array<Foo> or '
+    "Promise<void>; use ~Foo~ tilde syntax or simplify to a plain word (object, list, string, number) instead. "
     "Respond ONLY with valid Mermaid classDiagram syntax. No markdown fences. Start with: classDiagram"
 )
 
 MERGE_SYSTEM = (
     "Merge the provided Mermaid classDiagram snippets into one coherent diagram. "
     "Deduplicate classes, show cross-file relationships. "
+    'PRESERVE filename labels exactly as given (e.g. class Foo["Foo (foo.py)"]) — do not strip them. '
+    "If a class appears in multiple snippets with different labels, keep the first one. "
+    "CRITICAL: every node ID in the output must contain ONLY letters, digits, and underscores — if any "
+    "input snippet has a node ID with a hyphen or dot, rewrite that ID to use underscores instead "
+    "(consistently, in both class declarations and relationship lines) while keeping its quoted label unchanged. "
     "Respond ONLY with Mermaid classDiagram syntax. Start with: classDiagram"
 )
 
